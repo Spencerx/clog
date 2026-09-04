@@ -41,7 +41,8 @@
   "Handle new incoming websocket CONNECTIONS with ID from boot page. (Private)"
   (handler-case
       (cond ((and id (gethash id *connection-data*))
-              (format t "Reconnection id - ~A to ~A~%" id connection)
+              (unless *hide-connection-output*
+                (format t "Reconnection id - ~A to ~A~%" id connection))
               (let ((old (gethash id *connection-ids*)))
                 (when *verbose-output*
                   (format t "Transfer id - ~A => ~A" old connection))
@@ -58,7 +59,8 @@
                                 so the client is requesting to reconnect.~%Condition - ~A.~&"
                               c))))))
             (id
-              (format t "Reconnection id ~A not found. Closing the connection.~%" id)
+              (unless *hide-connection-output*
+                (format t "Reconnection id ~A not found. Closing the connection.~%" id))
               (websocket-driver:close-connection connection)) ; Don't send the reason for better security.
             (t
               (setf id (random-hex-string))
@@ -67,7 +69,8 @@
               (setf (gethash id *connection-data*)
                     (make-hash-table* :test #'equal))
               (setf (gethash "connection-id" (get-connection-data id)) id)
-              (format t "New connection id - ~A - ~A~%" id connection)
+              (unless *hide-connection-output*
+                (format t "New connection id - ~A - ~A~%" id connection))
               (websocket-driver:send connection
                                      (format nil "clog['connection_id']='~A'" id))
               (bordeaux-threads:make-thread
@@ -77,7 +80,9 @@
                       (handler-case
                           (funcall *on-connect-handler* id)
                         (t (c)
-                          (format t "Condition caught connection ~A - ~A.~&" id c)
+                          (if *hide-connection-output*
+                              (format t "Condition caught in connection handler - ~A.~&" c)
+                              (format t "Condition caught connection ~A - ~A.~&" id c))
                           (values 0 c)))))
                 :name (format nil "CLOG connection ~A"
                               id))))
@@ -351,7 +356,8 @@ the contents sent to the brower."
                                       (let ((id (random-hex-string)))
                                         (setf (gethash id *connection-data*) (make-hash-table* :test #'equal))
                                         (setf (gethash "connection-id" (get-connection-data id)) id)
-                                        (format t "New html connection id - ~A~%" id)
+                                        (unless *hide-connection-output*
+                                          (format t "New html connection id - ~A~%" id))
                                         (lambda (responder)
                                           (let* ((writer               (funcall responder '(200 (:content-type "text/html"))))
                                                  (stream               (lack.util.writer-stream:make-writer-stream writer))
@@ -374,16 +380,21 @@ the contents sent to the brower."
                                                 (handler-case
                                                     (funcall *on-connect-handler* id)
                                                   (t (c)
-                                                    (format t "Condition caught connection ~A - ~A.~&" id c)
+                                                    (if *hide-connection-output*
+                                                        (format t "Condition caught in connection handler - ~A.~&" c)
+                                                        (format t "Condition caught connection ~A - ~A.~&" id c))
                                                     (values 0 c))))
                                             (when *long-poll-first*
                                               (setf *long-poll-first* nil)
                                               (handler-case
                                                   (finish-output stream)
                                                 (t (c)
-                                                  (format t "Condition caught finish-output ~A - ~A.~&" id c)
+                                                  (if *hide-connection-output*
+                                                      (format t "Condition caught finish-output - ~A.~&" c)
+                                                      (format t "Condition caught finish-output ~A - ~A.~&" id c))
                                                   (values 0 c))))
-                                            (format t "HTML connection closed - ~A~%" id)))))
+                                            (unless *hide-connection-output*
+                                              (format t "HTML connection closed - ~A~%" id))))))
                                     (t
                                       (lambda (responder)
                                         (let* ((writer (funcall responder '(200 (:content-type "text/html"))))
@@ -498,10 +509,12 @@ DEFAULT-ANSWER."
         (when con
           (unless (or (eq *extended-long-poll* :extend)
                       (> (decf *extended-long-poll*) 0))
-            (format t "Closing long-poll for ~A~%" connection-id)
+            (unless *hide-connection-output*
+              (format t "Closing long-poll for ~A~%" connection-id))
             (setf *long-poll-first* nil))
           (return))
-        (format t "Awaiting websocket connection for ~A~%" connection-id)
+        (unless *hide-connection-output*
+          (format t "Awaiting websocket connection for ~A~%" connection-id))
         (sleep .1))))
   (let ((uid (generate-id)))
     (prep-query uid (when default-answer (format nil "~A" default-answer)))
